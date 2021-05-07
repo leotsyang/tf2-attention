@@ -1,119 +1,48 @@
 import tensorflow as tf
-import numpy as np
-import urllib
-from pathlib import Path
-import tensorflow_text as tf_text
-import typing
-from typing import Any, Tuple
-
-from tensorflow.keras.layers.experimental import preprocessing
-from text2vect import Text2Vect
 from shape_checker import ShapeChecker
 
-from encoder import Encoder
 
+class BahdanauAttention(tf.keras.layers.Layer):
+    def __init__(self, units):
+        super().__init__()
 
-def load_anki_data(file_path):
+        # add 2 FC layers for W1 and W2 in Bahdanau Attention
+        # units here is actually 'attn_units' ?
+        self.W1 = tf.keras.layers.Dense(units, use_bias=False)
+        self.W2 = tf.keras.layers.Dense(units, use_bias=False)
 
-    path_data_dir = Path('.')
+        self.attention = tf.keras.layers.AdditiveAttention()
 
-    path_nmt_file = path_data_dir / 'data' / file_path
-    fulltext = path_nmt_file.read_text(encoding='utf-8')
+    def __call__(self, query, value, mask):
 
-    lines = fulltext.splitlines()
-    pairs = [line.split('\t') for line in lines]
+        shape_checker = ShapeChecker()
 
-    txt_in = [inp for targ, inp, _ in pairs]
-    txt_out = [targ for targ, inp, _ in pairs]
+        # query units , i.e. decoder RNN hidden output units
+        # t, decoder time steps
+        shape_checker(query, ('batch', 't', 'query_units'))
 
-    return txt_out, txt_in
+        # value_units, i.e. encoder RNN hidden state unit size
+        # s, encoder time steps
+        shape_checker(value, ('batch', 's', 'value_units'))
 
+        shape_checker(mask, ('batch', 's'))
 
-def prepare_dataset(_input, _target):
+        w1_query = self.W1(query)
+        shape_checker(w1_query, ('batch', 't', 'attn_units'))
 
-    BUFFER_SIZE = len(_input)
-    BATCH_SIZE = 64
+        w2_key = self.W2(value)
+        shape_checker(w2_key, ('batch', 's', 'attn_units'))
 
-    dataset = tf.data.Dataset.from_tensor_slices((_input, _target))
-    dataset = dataset.shuffle(BUFFER_SIZE).batch(BATCH_SIZE)
+        query_mask = tf.ones(tf.shape(query)[:-1], dtype=bool)
+        value_mask = mask
 
-    type(dataset)
-    print("type of the dataset {}".format(type(dataset)))
-
-
-
-    return dataset
-
-def tf_lower_and_split_punct(text):
-    text = tf_text.normalize_utf8(text, 'NFKD')
-    text = tf.strings.lower(text)
-    # Keep space, a to z, and select punctuation.
-    text = tf.strings.regex_replace(text, '[^ a-z.?!,¿]', '')
-    # Add spaces around punctuation.
-    text = tf.strings.regex_replace(text, '[.?!,¿]', r' \0 ')
-    # Strip whitespace.
-    text = tf.strings.strip(text)
-
-    # add start of sentence and end of sentences token
-    text = tf.strings.join(['[START]', text, '[END]'], separator=' ')
-
-    print(text)
-
-    return text
-
-
-def encode():
-
-    max_vocab_size = 50000
-    embedding_dim = 256
-    encoder_units = 1024
-
-    _target, _input = load_anki_data('spa.txt')
-
-
-    # train text2vec layer for both input and target text
-    input_text_processor = tf.keras.layers.experimental.preprocessing.TextVectorization(
-            max_tokens=max_vocab_size,
-            standardize=tf_lower_and_split_punct
+        context_vector, attention_weights = self.attention(
+            inputs=[w1_query, value, w2_key],
+            mask=[query_mask, value_mask],
+            return_attention_scores=True,
         )
-    input_text_processor.adapt(_input)
+        shape_checker(context_vector, ('batch', 't', 'value_units'))
+        shape_checker(attention_weights, ('batch', 't', 's'))
 
-    input_vocab_size = len(input_text_processor.get_vocabulary())
-
-
-    output_text_processor = tf.keras.layers.experimental.preprocessing.TextVectorization(
-        max_tokens=max_vocab_size,
-        standardize=tf_lower_and_split_punct
-    )
-
-    output_text_processor.adapt(_target)
-    output_vocab_size = len(output_text_processor.get_vocabulary())
-
-
-    # construct encoder
-    encoder = Encoder(input_vocab_size,
-                       embedding_dim,
-                       encoder_units)
-
-    # prepare data as tf.dataset
-    dataset = prepare_dataset(_input, _target)
-    for batch_input, batch_target in dataset.take(1):
-        print(batch_input[:5])
-
-
-    # text to token
-    batch_input_token = input_text_processor(batch_input)
-
-    batch_enc_output, batch_enc_state = encoder(batch_input_token)
-
-    print("batch input shape (batch): {}".format(batch_input.shape))
-    print("batch token shape (batch,s): {}".format(batch_input_token.shape))
-    print("batch encoder output (batch,s,enc_units): {}".format(batch_enc_output.shape))
-    print("batch encoder state (batch,enc_units): {}".format(batch_enc_state.shape))
-
-
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    encode()
-
+        return context_vector, attention_weights
 
