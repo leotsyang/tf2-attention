@@ -87,12 +87,8 @@ class Decoder(tf.keras.layers.Layer):
         attention_vector = self.Wc(tf.concat([context_vec, rnn_output], axis=-1))
         shape_checker(attention_vector, ('batch', 't', 'dec_units'))
 
-        # step 5:  FC layer for logit outputs
+        # step 5:  FC layer for logit outputs, with one-hot encoding
         logits = self.fc(attention_vector)
         shape_checker(logits, ('batch', 't', 'output_vocab_size'))
 
         return DecoderOutput(logits, attention_weight), state
-
-
-
-
