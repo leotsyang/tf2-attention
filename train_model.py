@@ -82,6 +82,9 @@ class TrainTranslator(tf.keras.Model):
         '''
         input_text, target_text = inputs
 
+
+        batch = input_text.shape[0]
+        print("Training in batch mode  {:d} examples".format(batch))
         # preprocess into token and masks
         input_tokens, input_mask, target_tokens, target_mask = self._preprocess(input_text, target_text)
 
@@ -108,8 +111,9 @@ class TrainTranslator(tf.keras.Model):
                 step_loss, dec_state = self._loop_step(new_tokens, input_mask, enc_output, dec_state)
 
                 loss += step_loss
-            average_loss = loss / tf.reduce_sum(tf.cast(target_mask, tf.float32))
 
+            # to avoid that longer sentences has high loss just because of the length
+            average_loss = loss / tf.reduce_sum(tf.cast(target_mask, tf.float32))
 
         # apply an optimization step with gradient descent
         variables = self.trainable_variables

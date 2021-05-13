@@ -74,6 +74,7 @@ def nmt_batch():
     attn_units = 1024
     decoder_untis = 1024
 
+
     _target, _input = load_anki_data('spa.txt')
 
 
@@ -152,6 +153,7 @@ def nmt_train():
     embedding_dim = 256
     # same output size for encoder, decoder and attention
     units = 1024
+    epochs = 32
 
     _target, _input = load_anki_data('spa.txt')
 
@@ -184,7 +186,7 @@ def nmt_train():
     dataset = prepare_dataset(_input, _target)
 
     for batch_input, batch_target in dataset.take(1):
-        for n in range(5):
+        for n in range(epochs):
             print(nmt_model.train_step([batch_input, batch_target]))
 
 
