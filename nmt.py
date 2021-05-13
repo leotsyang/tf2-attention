@@ -14,6 +14,9 @@ from encoder import Encoder
 from attention import  BahdanauAttention
 from decoder import Decoder
 from decoder import DecoderInput
+from loss import MaskedLoss
+
+from train_model import TrainTranslator
 
 
 def load_anki_data(file_path):
@@ -138,10 +141,57 @@ def nmt_batch():
     print(f'logits shape: (batch_size, output_vocab_size) {dec_output.logits.shape}')
     print(f'state shape: (batch_size, dec_units) {dec_state.shape}')
 
+    # convert decoder logit output to token, so that it fits in for next time step
+
+    #
+    first_decoded_token = tf.random.categorical(dec_output.logits[:, 0, :], num_samples=1)
+
+
+def nmt_train():
+    max_vocab_size = 50000
+    embedding_dim = 256
+    # same output size for encoder, decoder and attention
+    units = 1024
+
+    _target, _input = load_anki_data('spa.txt')
+
+    # train text2vec layer for both input and target text
+    input_text_processor = tf.keras.layers.experimental.preprocessing.TextVectorization(
+            max_tokens=max_vocab_size,
+            standardize=tf_lower_and_split_punct
+        )
+    input_text_processor.adapt(_input)
+
+    output_text_processor = tf.keras.layers.experimental.preprocessing.TextVectorization(
+        max_tokens=max_vocab_size,
+        standardize=tf_lower_and_split_punct
+    )
+
+    output_text_processor.adapt(_target)
+
+    nmt_model = TrainTranslator(embedding_dim, units,
+                                input_text_processor, output_text_processor,
+                                use_tf_function=False)
+
+    # compile the model with optimizer and loss
+    nmt_model.compile(
+        optimizer=tf.optimizers.Adam(),
+        loss=MaskedLoss()
+
+    )
+
+    # create a batch dataset with input and target text
+    dataset = prepare_dataset(_input, _target)
+
+    for batch_input, batch_target in dataset.take(1):
+        for n in range(5):
+            print(nmt_model.train_step([batch_input, batch_target]))
+
+
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
 
-    nmt_batch()
+    nmt_train()
 
 
